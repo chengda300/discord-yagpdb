@@ -1,0 +1,4 @@
+{{$mid := toInt ((dbGet .Channel.ID "Nickname Auto Message ID").Value)}}
+{{deleteMessage nil $mid 0}}
+{{$mid := sendMessageRetID .channel.ID (complexMessage "content" (print "Please refer to https://discord.com/channels/774573137253761037/957979071374053376/1190366491401523270 for nickname update request instructions.\n\nPlease allow at least 24 hours for it to be approved as it is processed manually and the admin team comprises mostly of working adults. Thank you!"))}}
+{{dbSet .Channel.ID "Nickname Auto Message ID" (str $mid)}}	
