@@ -1,0 +1,98 @@
+{{/*
+	Handles reactions for the leveling system.
+	See <https://yagpdb-cc.github.io/leveling/reaction-handler> for more information.
+
+	Author: jo3-l <https://github.com/jo3-l>
+*/}}
+{{/* Code below is adapted from the above */}}
+
+{{ $action := .Reaction.Emoji.Name }} {{/* The action being ran */}}
+{{ $validEmojis := cslice "✅" "❎" }} {{/* Valid emojis */}}
+{{ $isValid := false }} {{/* Whether this is actually a valid request form embed */}}
+{{ $embed := "" }}
+{{ if and (eq .ReactionMessage.Author.ID 204255221017214977) (ge (len .ReactionMessage.Content) (len "Received your request")) }} {{/* Checks for validity */}}
+	{{$text := (slice .ReactionMessage.Content 0 (len "Received your request"))}}
+	{{ if (eq $text "Received your request") }} {{/* More checks */}}
+		{{ $isValid = true }} {{/* Yay, it is valid, but only for Admins, for guild representatives, they can only approve/reject for their own guilds, so we check more. */}}
+		{{if and (hasRoleID 774894312789901312) (not (hasRoleID 957979933110579250)) (not (hasRoleID 778505755576762418)) (not (hasRoleID 774574823363837993))}}
+      {{/* Match both guild names and world names for the guild representative and the request submitted */}}
+      {{/* As the name would be in the form of CharacterName (GuildName WorldName), split with delimiter " " gives "CharacterName", "(GuildName", "WorldName)" */}}
+			{{$masterGuild := lower (dbGet .User.ID "Guild").Value}}
+			{{$masterWorld := lower (slice (index (split (getMember .User.ID).Nick " ") 2) 0 1)}}
+			{{$requestor := (index .ReactionMessage.Mentions 0)}}
+      {{/* Mentions list get sorted by alphabetical order, so we need to know who is the requestor and who is the guild representative */}}
+			{{if (gt (len .ReactionMessage.Mentions) 1)}}
+				{{if (eq $requestor.ID .User.ID)}}
+					{{$requestor = (index .ReactionMessage.Mentions 1)}}
+				{{end}}
+			{{end}}
+			{{$request := (dbGet $requestor.ID "New Display Name").Value}}
+    		{{$request2 := index (split $request " ") 1}}
+    		{{$request3 := index (split $request " ") 2}}
+			{{$reqGuild := lower (slice $request2 1 (len $request2))}}
+    		{{$reqWorld := lower (slice $request3 0 1)}}
+			{{if or (ne $masterGuild $reqGuild) (ne $masterWorld $reqWorld)}}
+				{{$isValid = false}}
+			{{end}}
+		{{end}}
+	{{ end }}
+{{ end }}
+{{ if $isValid }} {{/* Proceed to process the response to the request */}}
+  {{/* Check if there is a linked guild representative so he/she can keep track even when the request is approved/rejected */}}
+  {{$text := index (split .ReactionMessage.Content "<@") 1}}
+	{{$mention := (getMember (index (split $text ">") 0)).User}}
+	{{$gmping := ""}}
+	{{if (gt (len .ReactionMessage.Mentions) 1)}}
+		{{if (eq (index .ReactionMessage.Mentions 1).ID $mention.ID)}}
+			{{$gmping = (print "\nFor your reference, " (index .ReactionMessage.Mentions 0).Mention)}}
+			{{$mention = (index .ReactionMessage.Mentions 1)}}
+		{{else}}
+			{{$gmping = (print "\nFor your reference, " (index .ReactionMessage.Mentions 1).Mention)}}
+		{{end}}
+	{{end}}
+	{{ if eq $action "✅" }}
+    {{/* Approved request */}}
+		{{ deleteAllMessageReactions nil .ReactionMessage.ID }}
+		{{ editMessageNoEscape nil .ReactionMessage.ID (complexMessageEdit "content" (print "Request accepted!" $gmping))}} {{/* Edit embed */}}
+		{{$newName := (dbGet $mention.ID "New Display Name").Value}}
+		{{$slice := split $newName " "}}
+		{{$ign := index $slice 0}}
+		{{$guild := slice (index $slice 1) 1 (len (index $slice 1))}}
+		{{$world := slice (index $slice 2) 0 1}}
+		{{$oldName := (getMember $mention.ID).Nick}}
+		{{if eq (len $oldName) 0}}
+			{{$oldName = "`(none)`"}}
+		{{end}}
+    {{/* Inform requestor that it is approved */}}
+		{{ sendMessageNoEscape 945273215876468746 (complexMessage "content" (print $mention.Mention "\nYour request is accepted! It may take some time for the nickname to be updated.") "embed" (cembed "title" "Nickname Updated!" "description" "Nickname changed as follows." "fields" (cslice (
+          sdict "name" "Discord ID" "value" (print $mention.ID)) (
+          sdict "name" "Discord Username" "value" $mention.String) (
+          sdict "name" "Old Display Name" "value" $oldName "inline" true) (
+          sdict "name" "New Display Name" "value" $newName "inline" true)))) }}
+		{{$oldGuild := dbGet $mention.ID "Guild"}}
+    {{/* Replace old guild with new guild */}}
+		{{if $oldGuild}}
+			{{dbDel $mention.ID $oldGuild.Value}}
+		{{end}}
+		{{dbSet $mention.ID "Guild" (lower $guild)}}
+		{{dbSet $mention.ID (lower $guild) $newName}}
+
+    {{/* Provide server access to requestor */}}
+		{{giveRoleID $mention.ID 1265932682890707046}}
+		{{giveRoleID $mention.ID 778532539287207956}}
+		{{takeRoleID $mention.ID 1271434315192078453 0}}
+		{{takeRoleID $mention.ID 1024677406625243256 0}}
+		{{takeRoleID $mention.ID 959838833858457600 0}}
+		{{$req := (dbGet $mention.ID "Ready").Value}}
+		{{dbSet $mention.ID "Ready" (print "Accepted " $req)}}
+	{{ else if eq $action "❎" }}
+    {{/* Rejected request */}}
+		{{ deleteAllMessageReactions nil .ReactionMessage.ID }}
+		{{ editMessageNoEscape nil .ReactionMessage.ID (complexMessageEdit "content" (print "Request rejected." $gmping))}} {{/* Edit embed */}}
+
+    {{/* Inform requestor that request is rejected */}}
+		{{ sendMessageNoEscape 945273215876468746 (complexMessage "content" (print $mention.Mention "\nYour request is rejected, please check again."))}}
+		{{dbSet $mention.ID "Ready" "Rejected"}}
+    	{{dbDel $mention.ID "New Display Name"}}
+	{{ end }}
+{{ end }}
