@@ -1,0 +1,22 @@
+{{$key := randInt 0 10000}} {{/* Generated PIN */}}
+{{if (lt $key 10)}}
+  {{$key = (print "000" $key)}}
+{{else if (lt $key 100)}}
+  {{$key = (print "00" $key)}}
+{{else if (lt $key 1000)}}
+  {{$key = (print "0" $key)}}
+{{end}}
+{{dbSet 0 "PIN of the day" $key}} {{/* Store Generated PIN in Database */}}
+
+{{/* Formatted text (information version) */}}
+{{$pin := (print "The PIN for the day is **__" $key "__**.\nPlease include this PIN, together with the last 5 digits of your Discord Account ID and today's date, in your screenshot for verification (type it in the game itself, not in Discord).")}}
+{{sendMessage .Channel.ID $pin}}
+
+{{/* Formatted text (instruction version) */}}
+{{$message := (print "Please refer to https://discord.com/channels/774573137253761037/957979071374053376/1256611985857183817 for nickname update request instructions.\n\n" $pin "\n\nPlease allow at least 24 hours for it to be approved as it is processed manually and the admin team comprises mostly of working adults. Thank you!")}}
+
+{{/* Editing existing instructions to use the new PIN when it changes */}}
+{{editMessage 957979071374053376 (toInt ((dbGet 957979071374053376 "Nickname Auto Message ID").Value)) (complexMessageEdit "content" (print $pin))}}
+{{editMessage .Channel.ID (toInt ((dbGet .Channel.ID "Nickname Auto Message ID").Value)) (complexMessageEdit "content" (print $message))}}
+{{editMessage 1067455320026267668 (toInt ((dbGet 1067455320026267668 "Nickname Auto Message ID").Value)) (complexMessageEdit "content" (print $message))}}
+{{editMessage 1136842063460180058 (toInt ((dbGet 1136842063460180058 "Nickname Auto Message ID").Value)) (complexMessageEdit "content" (print $message))}}
