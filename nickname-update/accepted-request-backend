@@ -1,0 +1,39 @@
+{{/* As the bot does not allow us to change nickname of other users with it, we need the user to use the bot to change for himself/herself */}}
+{{/* Used for busy waiting */}}
+{{$channels := .Guild.Channels}}
+{{$select := randInt 0 (len $channels)}}
+
+{{/* Get status per refresh to see if request is already approved/rejected */}}
+{{$status := (dbGet .User.ID "Ready").Value}}
+{{$reqID := .ExecData.reqID}}
+{{if (eq $status (print "Accepted " $reqID))}}
+  {{/* Continue enrolment if accepted */}}
+	{{$findGuild := (dbGet .User.ID "Guild").Value}}
+	{{$name := split (dbGet .User.ID $findGuild).Value " "}}
+	{{$ign := index $name 0}}
+	{{$guild := slice (index $name 1) 1 (len (index $name 1))}}
+	{{$world := slice (index $name 2) 0 1}}
+{{$fullWorld := $world}}
+	{{dbDel .User.ID "Ready"}}
+	{{dbDel .User.ID "New Display Name"}}
+{{if (eq $world "A")}}
+	{{$fullWorld = "Aquila"}}
+{{else if (eq $world "B")}}
+	{{$fullWorld = "Bootes"}}
+{{else if (eq $world "C")}}
+	{{$fullWorld = "Cassiopeia"}}
+{{else if (eq $world "D")}}
+	{{$fullWorld = "Draco"}}
+{{end}}
+
+{{/* Edit nickname */}}
+{{try}}
+	{{editNickname (print $ign " (" $guild " " $fullWorld ")")}}
+{{catch}} {{/* If using full world name causes nickname to exceed 32 characters */}}
+  {{editNickname (print $ign " (" $guild " " $world ")")}}
+{{end}}
+
+{{/* Continue waiting if request is not approved/rejected, 15 is the index of this command in our server, it would change if you use it */}}
+{{else if (eq $status $reqID)}}
+	{{execCC 15 (index $channels $select).ID 15 .ExecData}}
+{{end}}
