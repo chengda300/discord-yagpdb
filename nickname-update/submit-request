@@ -1,0 +1,134 @@
+{{$channels := .Guild.Channels}} {{/* List of channels in server */}}
+{{$select := randInt 0 (len $channels)}} {{/* Pick a random channel to keep the run alive (busy waiting) */}}
+{{$args := parseArgs 3 (print .User.Mention "\nCommand format: -nick IGN Guild World")
+	(carg "string" "IGN")
+	(carg "string" "Guild")
+	(carg "string" "World")}}
+{{$fullWorld := ""}}
+{{$ignStart := ""}} {{/* Handles the special case where character name starts with "@" */}}
+{{$ign := $args.Get 0}}
+{{$guild := $args.Get 1}}
+{{$guildEnd := ""}} {{/* Handles the special case where guild name ends with "_5" or "_8" */}}
+{{$world := upper (slice ($args.Get 2) 0 1)}} {{/* We only need the first letter of the world, since it is either A/B/C/D */}}
+{{$currName := (getMember .User.ID).Nick}}
+{{$pin := print ((dbGet 0 "PIN of the day").Value)}}
+{{$uid := (print (slice (print .User.ID) (sub (len (print .User.ID)) 5) (len (print .User.ID))))}}
+
+{{/* If no server nickname, put a placeholder to pass into embed */}}
+{{if eq (len $currName) 0}}
+	{{$currName = "`(none)`"}}
+{{end}}
+
+{{/* Handles the special case where character name starts with "@" */}}
+{{if eq (slice $ign 0 1) "@"}}
+	{{$ignStart = "@"}}
+{{end}}
+
+{{/* Translates single alphabets into their full world names in the game */}}
+{{if (eq $world "A")}}
+	{{$fullWorld = "Aquila"}}
+{{else if (eq $world "B")}}
+	{{$fullWorld = "Bootes"}}
+{{else if (eq $world "C")}}
+	{{$fullWorld = "Cassiopeia"}}
+{{else if (eq $world "D")}}
+	{{$fullWorld = "Draco"}}
+{{end}}
+
+{{/* Handles the special case where guild name ends with "_5" or "_8" */}}
+{{if (gt (len $guild) 3)}}
+	{{if (eq (slice $guild (sub (len $guild) 2) (len $guild)) "_5")}}
+		{{$guild = slice $guild 0 (sub (len $guild) 2)}}
+		{{$guildEnd = "_5"}}
+	{{else if (eq (slice $guild (sub (len $guild) 2) (len $guild)) "_8")}}
+		{{$guild = slice $guild 0 (sub (len $guild) 2)}}
+		{{$guildEnd = "_8"}}
+	{{end}}
+{{end}}
+
+{{/* Sanitise character name input */}}
+{{$ign = reReplace "([^0-9a-zA-Z]*)" (sanitizeText $ign) ""}}
+
+{{/* Sanitise guild name input */}}
+{{$guild = reReplace "([^0-9a-zA-Z]*)" $guild ""}}
+
+{{/* Character name check: between 4 to 12 characters */}}
+{{if (or (lt (len $ign) 4) (gt (len $ign) 12))}}
+	{{print .User.Mention "\nPlease check your IGN again. IGN detected: " $ign}}
+
+{{/* Guild name check: between 4 to 12 characters */}}
+{{else if (or (lt (len $guild) 4) (gt (len $guild) 12))}}
+	{{print .User.Mention "\nPlease check your Guild again. Guild detected: " $guild}}
+
+{{/* World name check: starts with A/B/C/D */}}
+{{else if (and (ne $world "a") (ne $world "A") (ne $world "b") (ne $world "B") (ne $world "c") (ne $world "C") (ne $world "d") (ne $world "D"))}}
+	{{print .User.Mention "\nPlease enter a valid world (A/B/C/D)."}}
+
+{{/* Upload check: There is an attachment */}}
+{{else if eq (len .Message.Attachments) 0}}
+	{{print .User.Mention "\nPlease upload the image together with the command, not separately. You can refer to https://discord.com/channels/774573137253761037/957979071374053376/1256611985857183817 for more information.\nLast 5 digits of Discord ID: " $uid "\nToday's PIN: " $pin}}
+
+{{/* Upload check: The attachment is an image */}}
+{{else if (eq (index .Message.Attachments 0).Width 0)}}
+	{{print .User.Mention "\nPlease check that it is a screenshot you are uploading."}}
+{{else}}
+  {{/* Passed all checks, proceed to process request */}}
+	{{$oldRequest := dbGet .User.ID "Ready"}}
+  {{/* If there is an old request, void it */}}
+	{{if $oldRequest}}
+		{{$oldReq := split $oldRequest.Value " "}}
+		{{if eq (len $oldReq) 2}}
+			{{ deleteAllMessageReactions (index $oldReq 0) (index $oldReq 1) }}
+			{{ editMessage (index $oldReq 0) (index $oldReq 1) (complexMessageEdit "content" "A newer request was submitted, this request is void.")}} {{/* Edit embed */}}
+		{{end}}
+	{{end}}
+  {{/* Handles the special case where character name starts with "@" as it is washed away during sanitisation */}}
+	{{$ign = (print $ignStart $ign)}}
+
+  {{/* Handles the special case where guild name ends with "_5" or "_8" as it is washed away during sanitisation */}}
+	{{$guild = (print $guild $guildEnd)}}
+
+  {{/* Formats the nickname into CharacterName (GuildName WorldName) */}}
+	{{$name := (print $ign " (" $guild " " $fullWorld ")")}}
+
+  {{/* Shorten world name to a single alphabet if the nickname is too long (max is 32 characters allowed by Discord) */}}
+  {{if (gt (len $name) 32)}}
+    {{$name = (print $ign " (" $guild " " $world ")")}}
+  {{end}}
+  {{/* Notify user in channel */}}
+  {{print .User.Mention "\nRequest received successfully. **Please do not delete your message until it is accepted or rejected.** If there are errors in your request, you may resubmit to automatically cancel the old one.\nNew IGN: **" $ign "**\nNew Guild: **" $guild "**\nNew World: **" $fullWorld "**\nLast 5 digits of your Discord ID: **" $uid "**\nToday's PIN: **" $pin "**"}}
+
+  {{/* Get guild representative information and inform him/her if possible, he/she also has access to the request form */}}
+  {{$gmid := (dbGet 0 (print (lower $guild) " " (lower $world)))}}
+	{{$content := (print "Received your request, " .User.Mention)}}
+	{{if $gmid}}
+		{{try}}
+			{{if targetHasRoleID $gmid.Value 774894312789901312}}
+				{{$content = (print "Received your request, " .User.Mention "\nGuild representative <@" $gmid.Value "> can also accept/reject this request.")}}
+			{{else}}
+				{{dbDel 0 (print (lower $guild) " " (lower $world))}}
+			{{end}}
+		{{catch}}
+			{{dbDel 0 (print (lower $guild) " " (lower $world))}}
+		{{end}}
+	{{end}}
+
+  {{/* Actual request form sent to admin channel for approval/rejection */}}
+	{{$mid := sendMessageRetID 1098570626521903145 (
+      complexMessage
+      "content" $content
+      "embed" (cembed "title" "Nickname Update Request" "description" (print .User.Mention " (Discord ID: " .User.ID ", Username: " .User.Username ")" " requested a nickname update. **React :white_check_mark: to approve, :negative_squared_cross_mark: to reject.**") "fields" (
+      cslice (
+        sdict "name" "Current Display Name" "value" $currName) (
+        sdict "name" "New IGN" "value" $ign "inline" true) (
+        sdict "name" "New Guild" "value" $guild "inline" true) (
+        sdict "name" "New World" "value" $fullWorld "inline" true) (
+        sdict "name" "New Display Name" "value" $name) (
+        sdict "name" "Last 5 digits of Discord ID" "value" $uid "inline" true) (
+        sdict "name" "Today's PIN" "value" $pin "inline" true))
+      "image" (index .Message.Attachments 0)))}}
+	{{addMessageReactions 1098570626521903145 $mid ":white_check_mark:" ":negative_squared_cross_mark:"}}
+	{{dbSet .User.ID "New Display Name" $name}}
+	{{dbSet .User.ID "Ready" (print "1098570626521903145 " $mid)}}
+	{{execCC 15 (index $channels $select).ID 1 (sdict "newIGN" $ign "newGuild" $guild "newWorld" $world "reqID" (print "1098570626521903145 " $mid))}}
+{{end}}
