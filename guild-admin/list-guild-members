@@ -1,0 +1,43 @@
+{{/*
+	Code adapted from leaderboard code:
+	See <https://yagpdb-cc.github.io/leveling/view-leaderboard> for more information.
+
+	Author: jo3-l <https://github.com/jo3-l>
+*/}}
+{{ $args := parseArgs 1 (print .User.Mention "\nCommand format: -guild GuildName")
+	(carg "string" "Guild Name") }}
+{{ $guild := lower ($args.Get 0) }} {{/* Guild name */}}
+{{ $page := 1 }}
+{{ $skip := mult (sub $page 1) 10 }} {{/* Skip to show the correct users in the specified page number */}}
+{{ $users := dbTopEntries $guild 10 $skip }} {{/* Show the users in the specified page number */}}
+{{ $count := dbCount $guild }} {{/* Count total number of users in the guild */}}
+{{ $max := roundCeil (div (toFloat $count) 10.0) }} {{/* Max number of pages based on count, 1 page = 10 users */}}
+{{ if not (len $users) }}
+	There were no users on that page!
+{{ else }}
+	{{ $rank := $skip }}
+	{{ $display := "" }}
+	{{ range $users }} {{/* List users in page */}}
+		{{- $usr := .User.Mention }}
+		{{- if eq $usr "#" }}
+			{{- $usr = .UserID }}
+		{{- end }}
+		{{- $rank = add $rank 1 }}
+{{ $x := getMember .User.ID }}
+{{ if $x }}
+		{{- $display = printf "%s\n• **%d.** %s `%s` / %s / %d"
+			$display $rank .User.Mention .User.String (str (getMember .User.ID).Nick) .User.ID -}}
+{{ else }}
+{{- $display = printf "%s\n• **%d.** %s / %d"
+			$display $rank .User.Mention .User.ID -}}
+{{ end }}
+	{{ end }}
+  {{/* Send the list to the channel as a message */}}
+	{{ $id := sendMessageRetID nil (cembed
+		"title" (print "❯ List of members in " $guild)
+		"color" 1479222
+		"description" (print "Registered members: " $count "\nShowing page " $page " of " $max "\n" $display)
+		"footer" (sdict "text" (joinStr "" "Page " $page " of " $max))
+	) }}
+	{{ addMessageReactions nil $id "◀️" "▶️" }}
+{{ end }}
