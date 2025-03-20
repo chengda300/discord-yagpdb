@@ -1,0 +1,21 @@
+{{ $lastPost := sdict }}
+{{ $channel := .Channel.ID }} {{/* Channel where message is posted at */}}
+{{ $user := .User.ID }} {{/* User group, by default 1 user per group unless specially grouped */}}
+{{/* Define user groups here */}}
+{{ if (or (eq $user 1292718090454306867) (eq $user 1303220693902688331) (eq $user 1303236984671830051)
+      (eq $user 1147417766316494920) (eq $user 1295281871722123285)) }}
+	{{ $user = 778932681853108224 }}
+{{ end }}
+{{ if (eq $user 304585335462035467) }}
+	{{ $user = 480958863571681281 }}
+{{ end }}
+{{ with (dbGet $user "lastpost") }}
+	{{ $lastPost = sdict .Value }} {{/* Update with DB entry if present */}}
+{{ end }}
+{{/* Search for latest message history in channel and delete */}}
+{{- with ($lastPost.Get (str $channel)) }}
+	{{ deleteMessage $channel . 0 }}
+{{- end -}}
+
+{{ $lastPost.Set (str $channel) .Message.ID }}
+{{ $s := dbSet $user "lastpost" $lastPost }} {{/* Save last post ID in channel into database */}}
