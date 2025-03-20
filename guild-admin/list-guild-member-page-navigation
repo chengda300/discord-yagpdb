@@ -1,0 +1,53 @@
+{{/*
+	Code adapted from leaderboard system:
+	See <https://yagpdb-cc.github.io/leveling/reaction-handler> for more information.
+
+	Author: jo3-l <https://github.com/jo3-l>
+*/}}
+
+{{ $action := .Reaction.Emoji.Name }} {{/* The action being ran */}}
+{{ $validEmojis := cslice "▶️" "◀️" }} {{/* Valid emojis */}}
+{{ $isValid := false }} {{/* Whether this is actually a valid embed / leaderboard embed */}}
+{{ $page := 0 }} {{/* The current page */}}
+{{ $title := ""}}
+{{ with and (eq .ReactionMessage.Author.ID 204255221017214977) .ReactionMessage.Embeds }} {{/* Checks for validity */}}
+	{{ $embed := index . 0 }} {{/* The first embed */}}
+	{{ $title = $embed.Title }}
+	{{ if and (eq (slice $embed.Title 0 (len "❯ List of members in ")) "❯ List of members in ") $embed.Footer }} {{/* More checks */}}
+		{{ $page = reFind `\d+` $embed.Footer.Text }} {{/* We presume that this is valid, and get the page num */}}
+		{{ $isValid = true }} {{/* Yay, it is valid */}}
+	{{ end }}
+{{ end }}
+{{ if and (in $validEmojis $action) $isValid $page }} {{/* Even more checks for validity... */}}
+	{{ $guild := lower (index (split $title "List of members in ") 1) }}
+	{{ $count := dbCount $guild }}
+	{{ $max := roundCeil (div (toFloat $count) 10.0) }}
+	{{ deleteMessageReaction nil .ReactionMessage.ID .User.ID $action }}
+	{{ if eq $action "▶️" }} {{ $page = add $page 1 }} {{/* Update page according to emoji */}}
+	{{ else }} {{ $page = sub $page 1 }} {{ end }}
+	{{ if ge $page 1 }} {{/* Otherwise, dbTopEntries throws error due to negative skip */}}
+		{{ $skip := mult (sub $page 1) 10 }} {{/* Get skip */}}
+		{{ $users := dbTopEntries $guild 10 $skip }} {{/* Fetch entries */}}
+		{{ if (len $users) }} {{/* If there are users on this page, proceed */}}
+			{{ $rank := $skip }}
+			{{ $display := "" }} {{/* Display for leaderboard embed */}}
+			{{ range $users }} {{- /* Loop over users and format */}}
+				{{- $rank = add $rank 1 }} {{- /* The user rank */}}
+        {{ $x := getMember .User.ID }}
+        {{ if $x }}
+		      {{- $display = printf "%s\n• **%d.** %s `%s` / %s / %d"
+			$display $rank .User.Mention .User.String (str (getMember .User.ID).Nick) .User.ID -}}
+        {{ else }}
+          {{- $display = printf "%s\n• **%d.** %s / %d"
+			$display $rank .User.Mention .User.ID -}}
+        {{ end }}
+		  {{ end }}
+		  {{ editMessage nil .ReactionMessage.ID (cembed
+			  "title" (print "❯ List of members in " $guild)
+			  "color" 1479222
+			  "description" (print "Registered members: " $count "\nShowing page " $page " of " $max "\n" $display)
+			  "footer" (sdict "text" (joinStr "" "Page " $page " of " $max))
+		  ) }} {{/* Edit embed */}}
+	  {{ end }}
+  {{ end }}
+{{ end }}
