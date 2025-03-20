@@ -1,0 +1,72 @@
+{{$args := parseArgs 1 (print .User.Mention "\nCommand format: -revoke DiscordID")
+	(carg "member" "Discord User ID")}}
+{{$user := ($args.Get 0)}} {{/* Targer user to revoke access from */}}
+{{$master := .User.ID}} {{/* User using the command */}}
+{{if eq .User.ID $user.User.ID}}
+	{{print "You can't revoke your own access!"}}
+{{else}}
+  {{try}} {{/* User's nickname matches expected format of: <in-game name> (<in-game enrolled guild> <in-game world>) */}}
+  {{$name := $user.Nick}}
+  {{$split := split $name " "}}
+  {{$ign := index $split 0}}
+  {{$guild := slice (index $split 1) 1 (len (index $split 1))}}
+  {{$world := lower (slice (index $split 2) 0 1)}}
+  {{$fullWorld := ""}}
+  {{if (eq $world "a")}} {{/* Obtain in-game world information */}}
+	  {{$fullWorld = "Aquila"}}
+  {{else if (eq $world "b")}}
+	  {{$fullWorld = "Bootes"}}
+  {{else if (eq $world "c")}}
+	  {{$fullWorld = "Cassiopeia"}}
+  {{else if (eq $world "d")}}
+	  {{$fullWorld = "Draco"}}
+  {{end}}
+  {{if eq .User.ID $user.User.ID}}
+	  {{print "You can't revoke your own access!"}}
+  {{else if and (hasRoleID 774894312789901312) (not (hasRoleID 957979933110579250)) (not (hasRoleID 778505755576762418)) (not (hasRoleID 774574823363837993))}} {{/* Not admin */}}
+	  {{$masterGuild := lower (dbGet .User.ID "Guild").Value}} {{/* Get user's in-game enrolled guild */}}
+	  {{$masterWorld := lower (slice (index (split (getMember .User.ID).Nick " ") 2) 0 1)}} {{/* Get user's in-game world */}}
+	  {{if and (eq $masterGuild (lower $guild)) (eq $masterWorld $world)}} {{/* Matches target user's in-game enrolled guild and in-game world, proceed to revoke */}}
+	  	{{dbDel $user.User.ID "Guild"}}
+		  {{dbDel $user.User.ID (lower $guild)}}
+		  {{giveRoleID $user.User.ID 1271434315192078453}} {{/* Manual Override */}}
+		  {{giveRoleID $user.User.ID 1024677406625243256}} {{/* Access Revoked */}}
+		  {{takeRoleID $user.User.ID 778532539287207956 0}} {{/* Regular Member */}}
+		  {{takeRoleID $user.User.ID 774894312789901312 0}} {{/* Guild Representative */}}
+      {{takeRoleID $user.User.ID 1289261608723419217 0}}
+		  {{print "Successfully revoked access for " $user.User.Mention " (" $name ").\nIGN: " $ign "\nWorld: " $fullWorld "\nDue to system limitations, the nickname will stay unchanged."}}
+	  {{else}}
+		  {{print "You can only revoke users registered to your guild.\nTarget user's guild: " $guild "\nYour guild: " $masterGuild}}
+	  {{end}}
+    {{else}} {{/* User is an admin, can revoke anyone's access instead of just users in the same in-game enrolled guild and in-game world */}}
+	    {{dbDel $user.User.ID "Guild"}}
+	    {{dbDel $user.User.ID (lower $guild)}}
+	    {{giveRoleID $user.User.ID 1271434315192078453}} {{/* manual override */}}
+	    {{giveRoleID $user.User.ID 1024677406625243256}} {{/* access revoked */}}
+	    {{takeRoleID $user.User.ID 778532539287207956 0}} {{/* regular member */}}
+      {{takeRoleID $user.User.ID 1314077402317721710 0}} {{/* regular member */}}
+	    {{takeRoleID $user.User.ID 774894312789901312 0}} {{/* Guild Representative */}}
+	    {{takeRoleID $user.User.ID 1289261608723419217 0}} {{/* Sales Archive */}}
+	    {{takeRoleID $user.User.ID 1292715509443330098 0}} {{/* Not Enrolled */}}
+	    {{print "Successfully revoked access for " $user.User.Mention " (" $name ").\nIGN: " $ign "\nWorld: " $fullWorld "\nDue to system limitations, the nickname will stay unchanged."}}
+    {{end}}
+  {{catch}} {{/* User's nickname does not match expected format, handle database side only and perform revocation */}}
+    {{$guild := (dbGet $user.User.ID "Guild")}}
+    {{if $guild}}
+      {{$guildName := lower $guild.Value}}
+      {{$masterGuild := lower (dbGet $master "Guild").Value}}
+      {{if (eq $guildName $masterGuild)}}
+        {{dbDel $user.User.ID "Guild"}}
+	      {{dbDel $user.User.ID (lower $guildName)}}
+	      {{giveRoleID $user.User.ID 1271434315192078453}} {{/* manual override */}}
+	      {{giveRoleID $user.User.ID 1024677406625243256}} {{/* access revoked */}}
+	      {{takeRoleID $user.User.ID 778532539287207956 0}} {{/* regular member */}}
+        {{takeRoleID $user.User.ID 1314077402317721710 0}} {{/* regular member */}}
+	      {{takeRoleID $user.User.ID 774894312789901312 0}} {{/* Guild Representative */}}
+	      {{takeRoleID $user.User.ID 1289261608723419217 0}} {{/* Sales Archive */}}
+	      {{takeRoleID $user.User.ID 1292715509443330098 0}} {{/* Not Enrolled */}}
+	      {{print "Successfully revoked access for " $user.User.Mention " (" $user.User.Username ").\nDue to system limitations, the nickname will stay unchanged."}}
+      {{end}}
+    {{end}}
+  {{end}}
+{{end}}
